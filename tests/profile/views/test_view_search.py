@@ -37,8 +37,7 @@ class UserSearchActivityViewTest(OppiaTestCase):
         for allowed_user in self.allowed_users:
             self.client.force_login(user=allowed_user)
             response = self.client.post(self.url)
-            self.assertTemplateUsed(response, self.template)
-            self.assertEqual(response.status_code, 200)
+            self.assertEqual(405, response.status_code)
 
         for disallowed_user in self.disallowed_users:
             self.client.force_login(user=disallowed_user)

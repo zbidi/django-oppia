@@ -8,8 +8,11 @@ from django.db import IntegrityError
 from django.http import HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils.decorators import method_decorator
 from django.utils.translation import ugettext as _
 from django.views import View
+from django.views.generic import TemplateView
+
 from tastypie.models import ApiKey
 
 import profile
@@ -24,89 +27,97 @@ from profile.views.utils import get_paginated_users, \
 from quiz.models import QuizAttempt, QuizAttemptResponse
 
 
-@staff_member_required
-def search_users(request):
-    users = User.objects
+@method_decorator(staff_member_required, name='dispatch')
+class SearchUsers(TemplateView):
+    def get(self, request):
+        users = User.objects
 
-    filtered = False
-    search_form = UserSearchForm(request.GET, request.FILES)
-    if search_form.is_valid():
-        filters = get_filters_from_row(search_form)
-        if filters:
-            users = users.filter(**filters)
-            filtered = True
+        filtered = False
+        search_form = UserSearchForm(request.GET, request.FILES)
+        if search_form.is_valid():
+            filters = get_filters_from_row(search_form)
+            if filters:
+                users = users.filter(**filters)
+                filtered = True
 
-    if not filtered:
-        users = users.all()
+        if not filtered:
+            users = users.all()
 
-    query_string = None
-    if ('q' in request.GET) and request.GET['q'].strip():
-        query_string = request.GET['q']
-        filter_query = get_query(query_string, ['username',
-                                                'first_name',
-                                                'last_name',
-                                                'email', ])
-        users = users.filter(filter_query)
+        query_string = None
+        if ('q' in request.GET) and request.GET['q'].strip():
+            query_string = request.GET['q']
+            filter_query = get_query(query_string, ['username',
+                                                    'first_name',
+                                                    'last_name',
+                                                    'email', ])
+            users = users.filter(filter_query)
 
-    ordering = request.GET.get('order_by', None)
-    if ordering is None:
-        ordering = 'first_name'
+        ordering = request.GET.get('order_by', None)
+        if ordering is None:
+            ordering = 'first_name'
 
-    users = users.order_by(ordering)
-    paginator = Paginator(users, profile.SEARCH_USERS_RESULTS_PER_PAGE)
+        users = users.order_by(ordering)
+        paginator = Paginator(users, profile.SEARCH_USERS_RESULTS_PER_PAGE)
 
-    # Make sure page request is an int. If not, deliver first page.
-    try:
-        page = int(request.GET.get('page', '1'))
-    except ValueError:
-        page = 1
-
-    try:
-        users = paginator.page(page)
-    except (EmptyPage, InvalidPage):
-        users = paginator.page(paginator.num_pages)
-
-    return render(request, 'profile/search_user.html',
-                  {'quicksearch': query_string,
-                   'search_form': search_form,
-                   'advanced_search': filtered,
-                   'page': users,
-                   'page_ordering': ordering})
-
-
-@staff_member_required
-def export_users(request):
-
-    ordering, users = get_paginated_users(request)
-    for user in users:
+        # Make sure page request is an int. If not, deliver first page.
         try:
-            user.apiKey = user.api_key.key
-        except ApiKey.DoesNotExist:
-            # if the user doesn't have an apiKey yet, generate it
-            user.apiKey = ApiKey.objects.create(user=user).key
+            page = int(request.GET.get('page', '1'))
+        except ValueError:
+            page = 1
 
-    template = 'export-users.html'
-    if request.is_ajax():
-        template = 'users-paginated-list.html'
+        try:
+            users = paginator.page(page)
+        except (EmptyPage, InvalidPage):
+            users = paginator.page(paginator.num_pages)
 
-    return render(request, 'profile/' + template,
-                  {'page': users,
-                   'page_ordering': ordering,
-                   'users_list_template': 'export'})
-
-
-@staff_member_required
-def list_users(request):
-    ordering, users = get_paginated_users(request)
-    return render(request, 'profile/users-paginated-list.html',
-                  {'page': users,
-                   'page_ordering': ordering,
-                   'users_list_template': 'select',
-                   'ajax_url': request.path})
+        return render(request, 'profile/search_user.html',
+                      {'quicksearch': query_string,
+                       'search_form': search_form,
+                       'advanced_search': filtered,
+                       'page': users,
+                       'page_ordering': ordering})
 
 
-def delete_account_view(request):
-    if request.method == 'POST':  # if form submitted...
+@method_decorator(staff_member_required, name='dispatch')
+class ExportUsers(TemplateView):
+    def get(self, request):
+
+        ordering, users = get_paginated_users(request)
+        for user in users:
+            try:
+                user.apiKey = user.api_key.key
+            except ApiKey.DoesNotExist:
+                # if the user doesn't have an apiKey yet, generate it
+                user.apiKey = ApiKey.objects.create(user=user).key
+
+        template = 'export-users.html'
+        if request.is_ajax():
+            template = 'users-paginated-list.html'
+
+        return render(request, 'profile/' + template,
+                      {'page': users,
+                       'page_ordering': ordering,
+                       'users_list_template': 'export'})
+
+
+@method_decorator(staff_member_required, name='dispatch')
+class ListUsers(TemplateView):
+    def get(self, request):
+        ordering, users = get_paginated_users(request)
+        return render(request, 'profile/users-paginated-list.html',
+                      {'page': users,
+                       'page_ordering': ordering,
+                       'users_list_template': 'select',
+                       'ajax_url': request.path})
+
+
+class DeleteAccount(TemplateView):
+    def get(self, request):
+        form = DeleteAccountForm(initial={'username': request.user.username})
+        return render(request, 'profile/delete_account.html',
+                      {'form': form})
+
+    def post(self, request):
         form = DeleteAccountForm(request.POST)
         if form.is_valid():
             user = request.user
@@ -137,16 +148,9 @@ def delete_account_view(request):
             # redirect
             return HttpResponseRedirect(
                 reverse('profile:delete_complete'))
-    else:
-        form = DeleteAccountForm(initial={'username': request.user.username})
 
-    return render(request, 'profile/delete_account.html',
-                  {'form': form})
-
-
-def delete_account_complete_view(request):
-
-    return render(request, 'profile/delete_account_complete.html')
+        return render(request, 'profile/delete_account.html',
+                      {'form': form})
 
 
 class UploadUsers(View):

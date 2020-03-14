@@ -46,13 +46,13 @@ urlpatterns = [
          name="quiz_attempt_detail"),
 
     path('upload/', profile_views.UploadUsers.as_view(), name="upload"),
-    path('search/', profile_views.search_users, name="search"),
-    path('export/', profile_views.export_users, name="export"),
-    path('list/', profile_views.list_users, name="list"),
+    path('search/', profile_views.SearchUsers.as_view(), name="search"),
+    path('export/', profile_views.ExportUsers.as_view(), name="export"),
+    path('list/', profile_views.ListUsers.as_view(), name="list"),
 
-    path('delete/', profile_views.delete_account_view, name="delete"),
+    path('delete/', profile_views.DeleteAccount.as_view(), name="delete"),
     path('delete/complete/',
-         profile_views.delete_account_complete_view,
+         TemplateView.as_view(template_name="profile/delete_account_complete.html"),
          name="delete_complete"),
     path('export/mydata/<data_type>',
          profile_views.export_mydata_view,
